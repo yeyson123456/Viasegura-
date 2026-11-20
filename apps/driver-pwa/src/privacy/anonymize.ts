@@ -2,8 +2,9 @@
 //
 // 1. Only a crop around the hazard is kept (never the full frame), at most 480 px.
 // 2. Everything outside the hazard box is pixelated with large blocks.
-// 3. The hazard box itself is rendered from a copy of at most 160 px, enough to see a pothole or
-//    rocks but far too coarse for a face or a licence plate to be legible.
+// 3. The hazard box itself is rendered from a copy of at most 280 px: enough to see a pothole or
+//    rocks, while people and vehicles anywhere in the crop (found by the COCO context model) are
+//    pixelated, so faces and licence plates are not legible.
 // 4. Re-encoding through a canvas produces a JPEG without EXIF/GPS metadata.
 // The server re-encodes again and scripts/privacy_audit.py checks stored photos.
 
@@ -11,7 +12,7 @@ export type Box = [number, number, number, number]; // normalized x1, y1, x2, y2
 
 export const PRIVACY = {
   maxSide: 480,
-  hazardMaxSide: 160,
+  hazardMaxSide: 280,
   expand: 0.6, // context added around the hazard box, relative to its size
   minCropShare: 0.35, // crop covers at least this share of the frame in each dimension
   pixelBlocks: 24, // context is reduced to ~24 blocks across
@@ -43,8 +44,23 @@ export function planCrop(box: Box, frameW: number, frameH: number): CropPlan {
   };
 }
 
-/** Runs in the detection worker (OffscreenCanvas); returns a metadata-free JPEG. */
-export async function anonymize(frame: ImageBitmap, box: Box): Promise<Blob> {
+/** Pixelate a rectangle of the output canvas in place (people and vehicles: faces, plates). */
+function pixelate(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  const left = Math.max(0, Math.floor(x));
+  const top = Math.max(0, Math.floor(y));
+  const width = Math.min(ctx.canvas.width - left, Math.ceil(w));
+  const height = Math.min(ctx.canvas.height - top, Math.ceil(h));
+  if (width < 2 || height < 2) return;
+  const blocks = new OffscreenCanvas(Math.max(1, Math.round(width / 12)), Math.max(1, Math.round(height / 12)));
+  const blocksCtx = blocks.getContext("2d") as OffscreenCanvasRenderingContext2D;
+  blocksCtx.drawImage(ctx.canvas, left, top, width, height, 0, 0, blocks.width, blocks.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(blocks, left, top, width, height);
+}
+
+/** Runs in the detection worker (OffscreenCanvas); returns a metadata-free JPEG. People and
+ *  vehicles found by the context model (`hidden`, normalized boxes) are pixelated as well. */
+export async function anonymize(frame: ImageBitmap, box: Box, hidden: { box: Box }[] = []): Promise<Blob> {
   const plan = planCrop(box, frame.width, frame.height);
   const { crop, out, hazard } = plan;
   const canvas = new OffscreenCanvas(out.w, out.h);
@@ -72,6 +88,14 @@ export async function anonymize(frame: ImageBitmap, box: Box): Promise<Blob> {
   lowCtx.drawImage(frame, srcX, srcY, srcW, srcH, 0, 0, lowW, lowH);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(low, hazard.x, hazard.y, hazard.w, hazard.h);
+
+  // People and vehicles (even inside the hazard box) are pixelated: no legible faces or plates.
+  const sx = out.w / crop.w;
+  const sy = out.h / crop.h;
+  for (const item of hidden) {
+    const [x1, y1, x2, y2] = item.box;
+    pixelate(ctx, (x1 * frame.width - crop.x) * sx, (y1 * frame.height - crop.y) * sy, (x2 - x1) * frame.width * sx, (y2 - y1) * frame.height * sy);
+  }
 
   return canvas.convertToBlob({ type: "image/jpeg", quality: PRIVACY.quality });
 }

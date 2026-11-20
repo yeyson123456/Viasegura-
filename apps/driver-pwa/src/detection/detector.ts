@@ -1,5 +1,5 @@
 // Main-thread facade over the detection worker (promise per request).
-import { MODEL_META_URL, MODEL_URL } from "../config";
+import { CONTEXT_META_URL, CONTEXT_MODEL_URL, MODEL_META_URL, MODEL_URL } from "../config";
 import type { Box } from "../privacy/anonymize";
 import type { Detection, ModelMeta } from "./postprocess";
 import type { WorkerRequest } from "./worker";
@@ -8,10 +8,14 @@ export interface LoadInfo {
   meta: ModelMeta;
   threads: number;
   isolated: boolean;
+  contextModel: boolean;
 }
 
 export interface DetectResult {
   detections: Detection[];
+  /** People and vehicles recognised by the context model (only when an obstacle appeared). */
+  context: Detection[];
+  suppressed: number;
   inferenceMs: number;
   totalMs: number;
 }
@@ -27,7 +31,7 @@ type Pending = { resolve: (value: never) => void; reject: (reason: Error) => voi
 
 // Payload a request carries, without the id the facade adds itself.
 type Payload =
-  | { type: "load"; modelUrl: string; metaUrl: string }
+  | { type: "load"; modelUrl: string; metaUrl: string; contextUrl: string; contextMetaUrl: string }
   | { type: "detect"; frame: ImageBitmap; minScore: number }
   | { type: "anonymize"; box: Box }
   | { type: "benchmark"; runs: number };
@@ -58,7 +62,13 @@ export class Detector {
   }
 
   async load(): Promise<LoadInfo> {
-    const info = await this.call<LoadInfo>({ type: "load", modelUrl: MODEL_URL, metaUrl: MODEL_META_URL });
+    const info = await this.call<LoadInfo>({
+      type: "load",
+      modelUrl: MODEL_URL,
+      metaUrl: MODEL_META_URL,
+      contextUrl: CONTEXT_MODEL_URL,
+      contextMetaUrl: CONTEXT_META_URL,
+    });
     this.meta = info.meta;
     return info;
   }

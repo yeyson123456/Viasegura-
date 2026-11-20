@@ -207,6 +207,58 @@ async def test_multipart_report_stores_metadata_free_photo(api) -> None:
     assert incident["imageUrl"] == body["imageUrl"]
 
 
+class _BlindDetector:
+    """Server-side detector that never finds the hazard in the photo."""
+
+    version = "test"
+
+    def detect(self, image, min_confidence):
+        return []
+
+
+def _photo() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (320, 240), (90, 90, 90)).save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+async def test_unconfirmed_photo_still_counts_by_default(api) -> None:
+    from app.dependencies import get_detector
+
+    http, app = api
+    app.dependency_overrides[get_detector] = lambda: _BlindDetector()
+
+    response = await http.post(
+        "/reports",
+        data={"report": json.dumps(report("device-mmmm-0001"))},
+        files={"image": ("hazard.jpg", _photo(), "image/jpeg")},
+    )
+
+    body = response.json()
+    assert body["serverCheck"]["status"] == "unconfirmed"
+    assert body["accepted"] is True
+    assert body["incidentStatus"] == "pending"
+
+
+async def test_strict_mode_excludes_unconfirmed_photos(api) -> None:
+    from app.dependencies import get_detector
+
+    http, app = api
+    app.dependency_overrides[get_detector] = lambda: _BlindDetector()
+    app.state.settings.server_check_rejects = True
+
+    response = await http.post(
+        "/reports",
+        data={"report": json.dumps(report("device-nnnn-0001"))},
+        files={"image": ("hazard.jpg", _photo(), "image/jpeg")},
+    )
+
+    body = response.json()
+    assert body["serverCheck"]["status"] == "rejected"
+    assert body["accepted"] is False
+    assert body["incidentId"] is None
+
+
 async def test_non_image_upload_is_refused(api) -> None:
     http, _ = api
 

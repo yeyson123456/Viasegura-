@@ -7,6 +7,7 @@ export interface TrackerOptions {
   windowFrames: number; // M
   hitsRequired: number; // K
   minScore: number;
+  minScoreByLabel?: Record<string, number>; // stricter floors per class (e.g. obstacle)
   cooldownMeters: number;
   cooldownMs: number;
 }
@@ -26,7 +27,8 @@ export class HazardTracker {
   update(detections: Detection[], now: number, position: LngLat | null): Detection[] {
     const best = new Map<string, Detection>();
     for (const d of detections) {
-      if (d.score < this.options.minScore) continue;
+      const floor = Math.max(this.options.minScore, this.options.minScoreByLabel?.[d.label] ?? 0);
+      if (d.score < floor) continue;
       const current = best.get(d.label);
       if (!current || d.score > current.score) best.set(d.label, d);
     }

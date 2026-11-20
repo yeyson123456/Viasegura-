@@ -111,6 +111,34 @@ export function toDetections(rows: Row[], lb: Letterbox, classes: string[]): Det
   }));
 }
 
+/** Share of box `a` covered by box `b` (normalized coordinates). */
+export function coveredShare(a: Detection["box"], b: Detection["box"]): number {
+  const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const area = Math.max(1e-9, (a[2] - a[0]) * (a[3] - a[1]));
+  return (ix * iy) / area;
+}
+
+/**
+ * Drop "obstacle" detections that are really a person or a vehicle (recognised by the COCO
+ * context model): the hazard overlaps the person/vehicle box substantially, or contains it.
+ */
+export function suppressByContext(
+  detections: Detection[],
+  context: Detection[],
+  labels: readonly string[] = ["obstacle"],
+): { kept: Detection[]; suppressed: Detection[] } {
+  const kept: Detection[] = [];
+  const suppressed: Detection[] = [];
+  for (const detection of detections) {
+    const isContext =
+      labels.includes(detection.label) &&
+      context.some((c) => coveredShare(detection.box, c.box) >= 0.4 || coveredShare(c.box, detection.box) >= 0.6);
+    (isContext ? suppressed : kept).push(detection);
+  }
+  return { kept, suppressed };
+}
+
 /** Letterbox geometry for a source frame (same rounding as the server). */
 export function letterbox(srcWidth: number, srcHeight: number, size: number): Letterbox {
   const scale = Math.min(size / srcWidth, size / srcHeight);

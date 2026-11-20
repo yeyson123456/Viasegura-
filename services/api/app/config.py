@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # --- Server-side re-detection (same ONNX model as the phone) ---
     model_path: str = "../../ml/models/hazards.onnx"
     server_check_min_confidence: float = Field(default=0.15, ge=0, le=1)
+    # False: a photo the server cannot confirm is flagged "unconfirmed" but still counts
+    # (consensus across devices is the main defence). True: such reports are excluded.
+    server_check_rejects: bool = False
     max_image_bytes: int = Field(default=1_500_000, ge=10_000, le=10_000_000)
 
     # --- Storage: Azure Blob (or Azurite) when a connection string is set, else a local folder.

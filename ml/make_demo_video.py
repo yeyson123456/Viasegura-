@@ -44,14 +44,34 @@ def main() -> None:
 
     rows = list(csv.DictReader(open(DATASET / "manifest.csv", encoding="utf-8")))
     test = [r for r in rows if r["split"] == "test"]
-    potholes = [r for r in test if r["source"] == "rdd2022" and int(r["n_pothole"]) >= 1]
-    obstacles = [r for r in test if r["source"] == "terrainsense" and int(r["n_obstacle"]) >= 2]
+
+    def labelled_area(row: dict, class_id: int) -> float:
+        """Total area of the GROUND-TRUTH boxes of one class (selection never uses the model)."""
+        label = DATASET / "labels" / "test" / (Path(row["file"]).stem + ".txt")
+        total = 0.0
+        for line in label.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) == 5 and int(parts[0]) == class_id:
+                total += float(parts[3]) * float(parts[4])
+        return total
+
+    # Clear examples: road (dash-cam) images with the largest labelled potholes, and obstacle
+    # frames from the TerrainSense road video only.
+    potholes = sorted(
+        (r for r in test if r["source"] == "rdd2022" and int(r["n_pothole"]) >= 1),
+        key=lambda r: labelled_area(r, 0),
+        reverse=True,
+    )
+    obstacles = sorted(
+        (r for r in test if r["source"] == "terrainsense" and r["group"] == "road1" and int(r["n_obstacle"]) >= 1),
+        key=lambda r: labelled_area(r, 1),
+        reverse=True,
+    )
     rng = random.Random(args.seed)
     half = args.frames // 2
-    chosen = rng.sample(potholes, min(half, len(potholes))) + rng.sample(
-        obstacles, min(args.frames - half, len(obstacles))
-    )
+    chosen = potholes[:half] + obstacles[: args.frames - half]
     rng.shuffle(chosen)
+    print(f"selected {min(half, len(potholes))} pothole + {min(args.frames - half, len(obstacles))} obstacle frames")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     writer = cv2.VideoWriter(str(OUTPUT), cv2.VideoWriter_fourcc(*"VP80"), FPS, (WIDTH, HEIGHT))

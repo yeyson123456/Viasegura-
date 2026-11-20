@@ -24,5 +24,10 @@ export const SYNC = {
 
 export const MODEL_URL = "/models/hazards.onnx";
 export const MODEL_META_URL = "/models/hazards.json";
+// COCO context model (people and vehicles): filters false "obstacles" and blurs people in photos.
+export const CONTEXT_MODEL_URL = "/models/context.onnx";
+export const CONTEXT_META_URL = "/models/context.json";
+// Obstacles need more confidence than potholes before they become a report.
+export const MIN_SCORE_BY_LABEL: Record<string, number> = { obstacle: 0.45 };
 export const CORRIDOR_URL = "/data/corridor.json";
 export const DEMO_VIDEO_URL = "/demo/demo-road.webm";

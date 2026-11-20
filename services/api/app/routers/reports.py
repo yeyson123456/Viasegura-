@@ -107,7 +107,8 @@ async def _server_check(
     matching = [d.confidence for d in detections if d.type == report.type]
     if matching:
         return {"status": "confirmed", "confidence": round(max(matching), 4)}, image
-    return {"status": "rejected", "reason": "hazard_not_found_on_server"}, image
+    status = "rejected" if settings.server_check_rejects else "unconfirmed"
+    return {"status": status, "reason": "hazard_not_found_on_server"}, image
 
 
 async def _result_for(

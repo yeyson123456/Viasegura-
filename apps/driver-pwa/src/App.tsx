@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ALERTS, DEMO_VIDEO_URL, DETECTION, SYNC } from "./config";
+import { ALERTS, DEMO_VIDEO_URL, DETECTION, MIN_SCORE_BY_LABEL, SYNC } from "./config";
 import { Detector, type BenchmarkResult, type LoadInfo } from "./detection/detector";
 import type { Detection } from "./detection/postprocess";
 import { HazardTracker } from "./detection/tracker";
@@ -24,14 +24,40 @@ function describe(result: ReportResult): string {
   return `Incidente pendiente: ${result.distinctDevices}/${result.requiredDevices} dispositivos lo han visto.`;
 }
 
-function drawDetections(canvas: HTMLCanvasElement, width: number, height: number, detections: Detection[]) {
+const CONTEXT_LABELS: Record<string, string> = {
+  person: "Persona",
+  bicycle: "Bicicleta",
+  car: "Auto",
+  motorcycle: "Moto",
+  bus: "Bus",
+  truck: "Camión",
+};
+
+function drawDetections(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+  detections: Detection[],
+  context: Detection[] = [],
+) {
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
   const line = Math.max(2, Math.round(width / 320));
-  ctx.font = `600 ${Math.max(14, Math.round(width / 40))}px system-ui, sans-serif`;
+  ctx.font = `600 ${Math.max(14, Math.round(width / 40))}px "IBM Plex Sans", system-ui, sans-serif`;
+  // People and vehicles: recognised and ignored (never reported as obstacles).
+  ctx.setLineDash([10, 6]);
+  for (const c of context) {
+    const [x1, y1, x2, y2] = [c.box[0] * width, c.box[1] * height, c.box[2] * width, c.box[3] * height];
+    ctx.strokeStyle = "#7fb2e5";
+    ctx.lineWidth = line;
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    ctx.fillStyle = "#7fb2e5";
+    ctx.fillText(`${CONTEXT_LABELS[c.label] ?? c.label} · ignorado`, x1 + 6, Math.min(height - 8, y2 - 8));
+  }
+  ctx.setLineDash([]);
   for (const d of detections) {
     const [x1, y1, x2, y2] = [d.box[0] * width, d.box[1] * height, d.box[2] * width, d.box[3] * height];
     const color = d.label === "obstacle" ? "#e5484d" : "#f2b705";
@@ -72,12 +98,12 @@ export default function App() {
   const fixRef = useRef<LocationFix | null>(null);
   const alertedRef = useRef(new Map<string, number>());
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
-  const trackerRef = useRef(new HazardTracker({ ...DETECTION, minScore: settings.minScore }));
+  const trackerRef = useRef(new HazardTracker({ ...DETECTION, minScore: settings.minScore, minScoreByLabel: MIN_SCORE_BY_LABEL }));
 
   const updateSettings = (next: Settings) => {
     setSettings(next);
     saveSettings(next);
-    trackerRef.current = new HazardTracker({ ...DETECTION, minScore: next.minScore });
+    trackerRef.current = new HazardTracker({ ...DETECTION, minScore: next.minScore, minScoreByLabel: MIN_SCORE_BY_LABEL });
   };
 
   // Load the model once (from the service-worker cache when offline).
@@ -255,7 +281,9 @@ export default function App() {
             const { videoWidth, videoHeight } = video;
             const result = await detector.detect(bitmap, Math.min(0.25, settings.minScore));
             if (cancelled) break;
-            if (canvasRef.current) drawDetections(canvasRef.current, videoWidth, videoHeight, result.detections);
+            if (canvasRef.current) {
+              drawDetections(canvasRef.current, videoWidth, videoHeight, result.detections, result.context);
+            }
             frames += 1;
             inferenceSum += result.inferenceMs;
             const elapsed = performance.now() - windowStart;

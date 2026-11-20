@@ -2,12 +2,20 @@ import {
   LngLatBounds,
   Map as MapLibreMap,
   NavigationControl,
+  Popup,
   ScaleControl,
   type GeoJSONSource,
   type MapLayerMouseEvent,
+  type MapMouseEvent,
   type StyleSpecification,
+  setWorkerUrl,
 } from "maplibre-gl";
+// MapLibre resolves its worker relative to its own module at runtime, which breaks once Vite
+// bundles it; serve the worker file as an asset and point MapLibre at it explicitly.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+
+setWorkerUrl(maplibreWorkerUrl);
 
 const API_URL: string = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 const AZURE_MAPS_KEY: string | undefined = import.meta.env.VITE_AZURE_MAPS_KEY;
@@ -66,25 +74,56 @@ const RISK_STOPS: [number, string][] = [
   [75, "#9d1f1f"],
 ];
 
+type BaseLayer = "streets" | "satellite";
+
+const azureTiles = (tileset: string) =>
+  `https://atlas.microsoft.com/map/tile?api-version=2024-04-01&tilesetId=${tileset}&zoom={z}&x={x}&y={y}&tileSize=256&subscription-key=${AZURE_MAPS_KEY}`;
+
+/** Two key-free base layers (Azure Maps when VITE_AZURE_MAPS_KEY is set), toggled by visibility. */
 function basemap(): StyleSpecification {
   const azure = Boolean(AZURE_MAPS_KEY);
   return {
     version: 8,
     sources: {
-      base: {
+      streets: {
         type: "raster",
-        tiles: azure
-          ? [
-              `https://atlas.microsoft.com/map/tile?api-version=2024-04-01&tilesetId=microsoft.base.road&zoom={z}&x={x}&y={y}&tileSize=256&subscription-key=${AZURE_MAPS_KEY}`,
-            ]
-          : ["a", "b", "c", "d"].map((s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png`),
+        tiles: [azure ? azureTiles("microsoft.base.road") : "https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
         tileSize: 256,
-        attribution: azure ? "© Microsoft Azure Maps" : "© OpenStreetMap contributors · © CARTO",
+        maxzoom: 19,
+        attribution: azure ? "© Microsoft Azure Maps" : "© OpenStreetMap contributors",
+      },
+      satellite: {
+        type: "raster",
+        tiles: [
+          azure
+            ? azureTiles("microsoft.imagery")
+            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        ],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: azure ? "© Microsoft Azure Maps" : "Imágenes © Esri, Maxar, Earthstar Geographics",
+      },
+      labels: {
+        type: "raster",
+        tiles: [
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        ],
+        tileSize: 256,
+        maxzoom: 19,
       },
     },
-    layers: [{ id: "base", type: "raster", source: "base" }],
+    layers: [
+      { id: "streets", type: "raster", source: "streets" },
+      { id: "satellite", type: "raster", source: "satellite", layout: { visibility: "none" } },
+      { id: "labels", type: "raster", source: "labels", layout: { visibility: "none" } },
+    ],
   };
 }
+
+const streetViewUrl = ([lng, lat]: [number, number]) =>
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
+const googleMapsUrl = ([lng, lat]: [number, number]) =>
+  `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`);
@@ -106,6 +145,39 @@ function timeAgo(iso: string): string {
   if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.round(minutes / 60);
   return hours < 48 ? `hace ${hours} h` : `hace ${Math.round(hours / 24)} d`;
+}
+
+function corridorBounds(segments: Segment[]): LngLatBounds {
+  const bounds = new LngLatBounds();
+  segments.forEach((s) => s.geometry.coordinates.forEach((c) => bounds.extend(c)));
+  return bounds;
+}
+
+/** Popup for a clicked point: segment summary (if any) + street-level links. Built with DOM APIs. */
+function popupContent(segment: { name?: string; risk?: number } | undefined, point: [number, number]): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "popup";
+  const title = document.createElement("strong");
+  title.textContent = segment?.name ? splitName(segment.name).place : "Punto seleccionado";
+  root.append(title);
+  const meta = document.createElement("span");
+  meta.className = "popup-meta";
+  meta.textContent = segment?.name
+    ? `${splitName(segment.name).km} · riesgo ${Number(segment.risk ?? 0).toFixed(1)}`
+    : `${point[1].toFixed(5)}, ${point[0].toFixed(5)}`;
+  root.append(meta);
+  for (const [label, href] of [
+    ["Ver la calle (Street View)", streetViewUrl(point)],
+    ["Abrir en Google Maps", googleMapsUrl(point)],
+  ]) {
+    const link = document.createElement("a");
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = label;
+    root.append(link);
+  }
+  return root;
 }
 
 /** "Tramo 06 · km 50–60 · Chinchao" -> { km: "km 50–60", place: "Chinchao" } */
@@ -182,6 +254,7 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [baseLayer, setBaseLayer] = useState<BaseLayer>("streets");
 
   const load = useCallback(async () => {
     try {
@@ -278,8 +351,20 @@ export default function App() {
         const id = event.features?.[0]?.properties?.id as string | undefined;
         if (id) setSelectedId(id);
       });
-      map.on("mouseenter", "incidents", () => (map.getCanvas().style.cursor = "pointer"));
-      map.on("mouseleave", "incidents", () => (map.getCanvas().style.cursor = ""));
+      // Any other point of the map: offer the street-level view (Google Street View, no key needed).
+      map.on("click", (event: MapMouseEvent) => {
+        if (map.queryRenderedFeatures(event.point, { layers: ["incidents"] }).length) return;
+        const segment = map.queryRenderedFeatures(event.point, { layers: ["segments"] })[0];
+        const point: [number, number] = [event.lngLat.lng, event.lngLat.lat];
+        new Popup({ maxWidth: "280px" })
+          .setLngLat(event.lngLat)
+          .setDOMContent(popupContent(segment?.properties as { name?: string; risk?: number } | undefined, point))
+          .addTo(map);
+      });
+      for (const layer of ["incidents", "segments"]) {
+        map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+        map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+      }
       setMapReady(true);
     });
     mapRef.current = map;
@@ -296,7 +381,11 @@ export default function App() {
     if (!map || !mapReady) return;
     (map.getSource("segments") as GeoJSONSource | undefined)?.setData({
       type: "FeatureCollection",
-      features: segments.map((s) => ({ type: "Feature", geometry: s.geometry, properties: { risk: s.riskScore } })),
+      features: segments.map((s) => ({
+        type: "Feature",
+        geometry: s.geometry,
+        properties: { risk: s.riskScore, name: s.name },
+      })),
     });
     (map.getSource("incidents") as GeoJSONSource | undefined)?.setData({
       type: "FeatureCollection",
@@ -307,12 +396,27 @@ export default function App() {
       })),
     });
     if (!fittedRef.current && segments.length > 0) {
-      const bounds = new LngLatBounds();
-      segments.forEach((s) => s.geometry.coordinates.forEach((c) => bounds.extend(c)));
-      map.fitBounds(bounds, { padding: { top: 48, bottom: 48, left: 48, right: 48 }, duration: 0 });
+      map.resize();
+      map.fitBounds(corridorBounds(segments), { padding: 56, duration: 0 });
       fittedRef.current = true;
     }
   }, [segments, incidents, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const satellite = baseLayer === "satellite";
+    map.setLayoutProperty("streets", "visibility", satellite ? "none" : "visible");
+    map.setLayoutProperty("satellite", "visibility", satellite ? "visible" : "none");
+    map.setLayoutProperty("labels", "visibility", satellite ? "visible" : "none");
+  }, [baseLayer, mapReady]);
+
+  const fitCorridor = () => {
+    const map = mapRef.current;
+    if (!map || segments.length === 0) return;
+    map.resize();
+    map.fitBounds(corridorBounds(segments), { padding: 56, duration: 700 });
+  };
 
   const selected = selectedId ? incidents.find((i) => i.id === selectedId) ?? null : null;
 
@@ -404,7 +508,20 @@ export default function App() {
             <div className="panel-head">
               <div>
                 <h2>Mapa operativo</h2>
-                <p>Riesgo por tramo, incidentes y concentración de reportes</p>
+                <p>Riesgo por tramo, incidentes y concentración de reportes · clic en la vía para verla a nivel de calle</p>
+              </div>
+              <div className="map-tools">
+                <div className="segmented" role="group" aria-label="Capa base del mapa">
+                  <button className={baseLayer === "streets" ? "on" : ""} onClick={() => setBaseLayer("streets")}>
+                    Calles
+                  </button>
+                  <button className={baseLayer === "satellite" ? "on" : ""} onClick={() => setBaseLayer("satellite")}>
+                    Satélite
+                  </button>
+                </div>
+                <button className="tool" onClick={fitCorridor}>
+                  Centrar corredor
+                </button>
               </div>
             </div>
             <div className="map-frame">
@@ -465,6 +582,14 @@ export default function App() {
                       {selected.location.coordinates[1].toFixed(5)}, {selected.location.coordinates[0].toFixed(5)}
                     </dd>
                   </dl>
+                  <div className="street-links">
+                    <a href={streetViewUrl(selected.location.coordinates)} target="_blank" rel="noreferrer">
+                      Ver la calle (Street View)
+                    </a>
+                    <a href={googleMapsUrl(selected.location.coordinates)} target="_blank" rel="noreferrer">
+                      Abrir en Google Maps
+                    </a>
+                  </div>
                   {selected.status !== "resolved" && (
                     <button className="btn-primary" disabled={busy} onClick={() => resolve(selected)}>
                       Marcar como resuelto

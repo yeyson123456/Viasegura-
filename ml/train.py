@@ -31,7 +31,19 @@ def main() -> None:
     parser.add_argument("--fraction", type=float, default=1.0, help="share of train set to use")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--name", default=None, help="run name under ml/runs/")
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="path to an interrupted run's last.pt; continues with that run's settings",
+    )
     args = parser.parse_args()
+
+    if args.resume:
+        started = time.time()
+        model = YOLO(args.resume)
+        model.train(resume=True)
+        print(f"resumed run finished in {(time.time() - started) / 60:.1f} min: {model.trainer.save_dir}")
+        return
 
     name = args.name or f"{Path(args.model).stem}-{args.imgsz}"
     model = YOLO(args.model)  # downloads the COCO-pretrained nano checkpoint if missing

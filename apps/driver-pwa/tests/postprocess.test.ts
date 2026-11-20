@@ -1,5 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { decode, letterbox, nms, toCHW, toDetections } from "../src/detection/postprocess";
+import {
+  decode,
+  letterbox,
+  nms,
+  suppressByContext,
+  toCHW,
+  toDetections,
+  type Detection,
+} from "../src/detection/postprocess";
+
+describe("suppressByContext", () => {
+  const det = (label: string, box: Detection["box"]): Detection => ({ label, classId: 0, score: 0.6, box });
+
+  it("drops obstacles that are a person, keeps real obstacles and potholes", () => {
+    const person = det("person", [0.4, 0.2, 0.6, 0.9]);
+    const onPerson = det("obstacle", [0.42, 0.3, 0.58, 0.85]);
+    const rocks = det("obstacle", [0.05, 0.7, 0.3, 0.95]);
+    const pothole = det("pothole", [0.45, 0.8, 0.55, 0.9]); // even under the person
+    const { kept, suppressed } = suppressByContext([onPerson, rocks, pothole], [person]);
+    expect(suppressed).toEqual([onPerson]);
+    expect(kept).toEqual([rocks, pothole]);
+  });
+
+  it("keeps everything when no person or vehicle is present", () => {
+    const rocks = det("obstacle", [0.1, 0.6, 0.4, 0.9]);
+    expect(suppressByContext([rocks], []).kept).toEqual([rocks]);
+  });
+});
 
 describe("letterbox", () => {
   it("keeps aspect ratio and centres the image (same rounding as the server)", () => {

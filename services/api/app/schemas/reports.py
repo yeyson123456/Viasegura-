@@ -28,7 +28,7 @@ class ReportIn(ApiModel):
 
 
 class ServerCheck(ApiModel):
-    status: Literal["confirmed", "rejected", "skipped"]
+    status: Literal["confirmed", "unconfirmed", "rejected", "skipped"]
     confidence: float | None = None
     reason: str | None = None
 
