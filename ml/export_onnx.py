@@ -46,13 +46,26 @@ def main() -> None:
     parser.add_argument("--weights", default=None)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--opset", type=int, default=17, help="17 is safe for ONNX Runtime Web")
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="export the one-to-many head (needs NMS) instead of YOLO26's NMS-free end-to-end head",
+    )
     args = parser.parse_args()
 
     weights = Path(args.weights).resolve() if args.weights else newest_best()
     model = YOLO(str(weights))
     names = model.names
+    # Ultralytics: nms=False selects the end-to-end (NMS-free) branch; nms=None exports raw boxes.
     exported = Path(
-        model.export(format="onnx", imgsz=args.imgsz, opset=args.opset, simplify=True, dynamic=False)
+        model.export(
+            format="onnx",
+            imgsz=args.imgsz,
+            opset=args.opset,
+            simplify=True,
+            dynamic=False,
+            nms=None if args.raw else False,
+        )
     )
 
     # Inspect the real output layout instead of assuming it.

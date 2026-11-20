@@ -1,0 +1,107 @@
+{
+  "model": "models\\hazards.onnx",
+  "model_sha256": "8e7aaace7d11769c4b1fc771405300f99ab5e2daab5bdd768f4ab269944cf5ed",
+  "imgsz": 640,
+  "split": "test",
+  "conf": 0.001,
+  "iou": 0.7,
+  "device": "cpu",
+  "note": "Precision/recall at the F1-optimal confidence (Ultralytics convention).",
+  "evaluated_at": "2026-11-20T22:07:29+00:00",
+  "ultralytics_version": "8.4.216",
+  "subsets": {
+    "overall": {
+      "images": 1111,
+      "instances": {
+        "pothole": 1013,
+        "obstacle": 1147
+      },
+      "metrics": {
+        "all": {
+          "precision": 0.33940917759285727,
+          "recall": 0.2578060260246809,
+          "mAP50": 0.22570936176223877,
+          "mAP50-95": 0.09123057321850511
+        },
+        "pothole": {
+          "precision": 0.2875704013007445,
+          "recall": 0.3751233958538993,
+          "mAP50": 0.2835527705343041,
+          "mAP50-95": 0.10945218173471097
+        },
+        "obstacle": {
+          "precision": 0.39124795388496997,
+          "recall": 0.14048865619546247,
+          "mAP50": 0.16786595299017343,
+          "mAP50-95": 0.0730089647022993
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 2.26,
+        "inference": 33.42,
+        "loss": 0.0,
+        "postprocess": 0.3
+      }
+    },
+    "rdd2022": {
+      "images": 631,
+      "instances": {
+        "pothole": 860,
+        "obstacle": 0
+      },
+      "metrics": {
+        "all": {
+          "precision": 0.4198188378275216,
+          "recall": 0.3697674418604651,
+          "mAP50": 0.3504018533858374,
+          "mAP50-95": 0.1346646564345216
+        },
+        "pothole": {
+          "precision": 0.4198188378275216,
+          "recall": 0.3697674418604651,
+          "mAP50": 0.3504018533858374,
+          "mAP50-95": 0.1346646564345216
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 2.18,
+        "inference": 33.77,
+        "loss": 0.0,
+        "postprocess": 0.3
+      }
+    },
+    "terrainsense": {
+      "images": 480,
+      "instances": {
+        "pothole": 153,
+        "obstacle": 1147
+      },
+      "metrics": {
+        "all": {
+          "precision": 0.15921890031611952,
+          "recall": 0.13302877870170757,
+          "mAP50": 0.08834406968356219,
+          "mAP50-95": 0.03828554932874682
+        },
+        "pothole": {
+          "precision": 0.024898098973151192,
+          "recall": 0.06535947712418301,
+          "mAP50": 0.00814318044719457,
+          "mAP50-95": 0.0032943151580941124
+        },
+        "obstacle": {
+          "precision": 0.2935397016590878,
+          "recall": 0.2006980802792321,
+          "mAP50": 0.16854495891992982,
+          "mAP50-95": 0.07327678349939953
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 3.18,
+        "inference": 35.43,
+        "loss": 0.0,
+        "postprocess": 0.31
+      }
+    }
+  }
+}
