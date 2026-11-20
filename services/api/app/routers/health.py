@@ -27,12 +27,20 @@ async def health(
     response.headers["Cache-Control"] = "no-store"
     if not database_ok:
         response.status_code = 503
+    state = request.app.state
+    detector = getattr(state, "detector", None)
+    storage = getattr(state, "storage", None)
     return HealthResponse(
         status="ok" if database_ok else "degraded",
         version=__version__,
-        environment=request.app.state.settings.api_env,
-        uptime_s=round(time.monotonic() - request.app.state.started_at, 3),
+        environment=state.settings.api_env,
+        uptime_s=round(time.monotonic() - state.started_at, 3),
         checks={"database": "ok" if database_ok else "unreachable"},
+        components={
+            "schema": "ready" if getattr(state, "schema_ready", False) else "pending",
+            "detector": f"loaded:{detector.version}" if detector else "disabled",
+            "storage": type(storage).__name__ if storage else "none",
+        },
     )
 
 

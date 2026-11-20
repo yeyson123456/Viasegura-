@@ -12,7 +12,10 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     uptime_s: float
+    # Checks decide the HTTP status (200 / 503).
     checks: dict[str, CheckStatus]
+    # Informational: schema readiness, detector and storage backend.
+    components: dict[str, str] = {}
 
 
 class LivenessResponse(BaseModel):

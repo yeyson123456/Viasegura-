@@ -3,3 +3,11 @@ uvicorn[standard]==0.54.0
 pydantic==2.14.4
 pydantic-settings==2.16.3
 pymongo==4.20.1
+python-multipart==0.0.34
+# Server-side re-detection with the same ONNX model as the phone
+onnxruntime==1.32.0
+numpy==2.4.6
+pillow==13.0.0
+# Report photos (Blob) and risk events (Queue); Azurite locally
+azure-storage-blob==12.31.1
+azure-storage-queue==12.18.1
