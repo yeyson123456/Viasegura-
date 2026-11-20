@@ -1,0 +1,51 @@
+# Data sources for the two-class road-hazard detector.
+# Class ids are fixed: 0 = pothole, 1 = obstacle (rocks, debris, landslide material, logs...).
+classes: [pothole, obstacle]
+seed: 42
+output_dir: data/viasegura # relative to ml/
+raw_dir: data/raw # download cache, relative to ml/
+
+rdd2022:
+  enabled: true
+  # Single 13 GB ZIP on figshare. Only annotations and the selected images are downloaded,
+  # using HTTP Range requests against the archive's central directory.
+  url: https://ndownloader.figshare.com/files/38030910
+  license: CC BY 4.0
+  citation: >-
+    D. Arya et al., "RDD2022: A multi-national image dataset for automatic Road Damage
+    Detection", 2022. https://doi.org/10.6084/m9.figshare.21431547
+  # Dash-cam style countries. China_Drone (aerial view) is excluded on purpose.
+  countries: [India, Japan, Czech, United_States, China_MotorBike]
+  class_map: { D40: pothole } # D00/D10/D20 cracks are not hazards for this product
+  # Crack-only / clean images kept as background, relative to the number of pothole images,
+  # so the model learns not to fire on cracks and patches.
+  negatives_ratio: 0.25
+  # Split by blocks of consecutive image ids to limit near-duplicate leakage between splits.
+  split: { val: 0.10, test: 0.15, block_size: 20 }
+
+terrainsense:
+  enabled: true
+  # Mendeley Data public API (no account needed). Frames come from 8 videos, so the split is
+  # done by whole video: no frame of a test video is ever seen in training.
+  api: https://data.mendeley.com/public-api/datasets/r6cmjrr6kv
+  license: CC BY 4.0
+  citation: >-
+    H. Bhute, V. Rane, A. Joshi, "TerrainSense: Dataset of Off-Road Terrain Obstacles and
+    Traversability Hazards", Mendeley Data. https://doi.org/10.17632/r6cmjrr6kv.3
+  names: [obstacle, person, pothole, vehical] # as published (sic)
+  class_map: { obstacle: obstacle, pothole: pothole } # person / vehicle boxes are dropped
+  max_side: 1280 # large frames are downscaled on disk; labels are normalized so they still match
+  split_groups:
+    test: [clip2, road1]
+    val: [Road2, footpath]
+  # Keep every n-th frame of each video (consecutive frames are near-duplicates).
+  frame_stride: { train: 2, val: 1, test: 1 }
+
+# Team photos (e.g. Huánuco – Tingo María). Each folder holds images/ and labels/ in YOLO format
+# with class ids 0 = pothole, 1 = obstacle. See ml/README.md, section "Adding your own photos".
+local:
+  - name: huanuco_tingo_maria
+    enabled: false
+    path: data/local/huanuco_tingo_maria
+    license: Team-owned
+    split: { val: 0.15, test: 0.25, block_size: 10 }
