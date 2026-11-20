@@ -1,0 +1,9 @@
+# Images are built with the repository root as context.
+# Whitelist only what images need, so datasets, node_modules and secrets never reach a build.
+*
+!services/api/requirements.txt
+!services/api/app/
+!ml/models/
+
+**/__pycache__
+**/*.py[cod]
