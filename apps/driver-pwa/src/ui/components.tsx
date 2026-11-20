@@ -150,7 +150,9 @@ export function AlertOverlay({
         </span>
       </span>
       <strong className="alert-title">{hazardLabel(alert.type)}</strong>
-      <span className="alert-distance">a {formatDistance(alert.distanceM)}</span>
+      <span className="alert-distance">
+        {alert.distanceM < 50 ? "muy cerca" : `a ${formatDistance(alert.distanceM)}`}
+      </span>
       <span className="alert-advice">{alert.type === "obstacle" ? "Reduzca la velocidad" : "Conduzca con precaución"}</span>
       <small className="alert-dismiss">Toque la pantalla para cerrar</small>
     </button>
