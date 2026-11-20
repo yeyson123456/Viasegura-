@@ -1,51 +1,73 @@
-"""Checks against a real MongoDB.
-
-Skipped when no database is reachable (e.g. Docker is off). Set TEST_REQUIRE_MONGO=1 to turn the
-skip into a failure, as CI does.
-"""
-
-import os
-from collections.abc import AsyncIterator
+"""Schema checks against a real MongoDB (skipped when none is reachable, see conftest)."""
 
 import pytest
 
-from app.config import Settings
-from app.db import Mongo
-from app.main import create_app
-
 pytestmark = pytest.mark.integration
 
-MONGODB_URI = os.getenv("TEST_MONGODB_URI", "mongodb://localhost:27017")
-TEST_DB = "viasegura_test"
 
+async def test_health_reports_schema_ready(api) -> None:
+    http, _ = api
 
-@pytest.fixture
-async def mongo() -> AsyncIterator[Mongo]:
-    database = Mongo(MONGODB_URI, TEST_DB, timeout_ms=1500)
-    if not await database.ping():
-        await database.close()
-        if os.getenv("TEST_REQUIRE_MONGO") == "1":
-            pytest.fail(f"MongoDB is required but not reachable at {MONGODB_URI}")
-        pytest.skip(f"MongoDB not reachable at {MONGODB_URI}")
-    yield database
-    await database.client.drop_database(TEST_DB)
-    await database.close()
-
-
-async def test_insert_and_read_back(mongo: Mongo) -> None:
-    result = await mongo.db.smoke.insert_one({"hello": "world"})
-
-    document = await mongo.db.smoke.find_one({"_id": result.inserted_id})
-
-    assert document is not None
-    assert document["hello"] == "world"
-
-
-async def test_health_is_ok_against_real_database(mongo: Mongo, client_for) -> None:
-    app = create_app(Settings(api_env="test", mongodb_uri=MONGODB_URI, mongodb_db=TEST_DB))
-
-    async for http in client_for(app):
-        response = await http.get("/health")
+    response = await http.get("/health")
 
     assert response.status_code == 200
-    assert response.json()["checks"] == {"database": "ok"}
+    body = response.json()
+    assert body["checks"] == {"database": "ok"}
+    assert body["components"]["schema"] == "ready"
+
+
+async def test_indexes_ttl_and_time_series_exist(api) -> None:
+    _, app = api
+    db = app.state.mongo.db
+
+    report_indexes = await db["reports"].index_information()
+    incident_indexes = await db["incidents"].index_information()
+    segment_indexes = await db["segments"].index_information()
+    collections = {c["name"]: c async for c in await db.list_collections()}
+
+    assert report_indexes["location_2dsphere"]["key"] == [("location", "2dsphere")]
+    assert report_indexes["reports_ttl"]["expireAfterSeconds"] == 30 * 86_400
+    assert report_indexes["device_report_unique"]["unique"] is True
+    assert incident_indexes["status_type"]["key"] == [("status", 1), ("type", 1)]
+    assert "location_2dsphere" in incident_indexes
+    assert "geometry_2dsphere" in segment_indexes
+    assert collections["risk_history"]["type"] == "timeseries"
+
+
+async def test_ttl_change_is_applied_in_place(api) -> None:
+    from app.db import ensure_schema
+
+    _, app = api
+    db = app.state.mongo.db
+
+    await ensure_schema(db, reports_ttl_days=7, seed_segments=False)
+
+    assert (await db["reports"].index_information())["reports_ttl"][
+        "expireAfterSeconds"
+    ] == 7 * 86_400
+
+
+async def test_segments_are_seeded_and_ranked(api) -> None:
+    http, _ = api
+
+    response = await http.get("/segments/risk", params={"limit": 50})
+
+    assert response.status_code == 200
+    segments = response.json()
+    assert len(segments) == 13
+    first = segments[0]
+    assert first["code"].startswith("HCO-TGM-")
+    assert first["geometry"]["type"] == "LineString"
+    assert {"populationServed", "isolationIndex", "riskScore", "lengthKm"} <= first.keys()
+
+
+async def test_stats_shape(api) -> None:
+    http, _ = api
+
+    response = await http.get("/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["segments"] == 13
+    assert body["consensus"] == {"minDevices": 3, "radiusM": 30.0, "windowMin": 60.0}
+    assert set(body["incidentsByStatus"]) == {"pending", "confirmed", "resolved"}

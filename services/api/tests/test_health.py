@@ -4,7 +4,6 @@ import re
 
 from httpx import AsyncClient
 
-from app.config import Settings
 from app.main import create_app
 
 
@@ -30,16 +29,17 @@ async def test_health_degraded_when_database_unreachable(client: AsyncClient, fa
     assert response.json()["checks"] == {"database": "unreachable"}
 
 
-async def test_health_degraded_with_real_client_and_no_database(client_for) -> None:
+async def test_health_degraded_with_real_client_and_no_database(client_for, make_settings) -> None:
     # No dependency override: exercises the real PyMongo client against a closed port.
-    app = create_app(
-        Settings(api_env="test", mongodb_uri="mongodb://127.0.0.1:1", mongodb_timeout_ms=200)
-    )
+    app = create_app(make_settings())
     async for http in client_for(app):
         response = await http.get("/health")
 
     assert response.status_code == 503
-    assert response.json()["checks"] == {"database": "unreachable"}
+    body = response.json()
+    assert body["checks"] == {"database": "unreachable"}
+    assert body["components"]["schema"] == "pending"
+    assert body["components"]["detector"] == "disabled"
 
 
 async def test_liveness_never_touches_database(client: AsyncClient, fake_mongo) -> None:
