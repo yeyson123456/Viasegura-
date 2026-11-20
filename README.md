@@ -2,115 +2,133 @@
 
 **The driver's phone as a road sensor.** On-device computer vision detects potholes and
 obstacles/landslides, reports are confirmed by consensus across independent devices, and confirmed
-hazards are pushed to other drivers and to a management dashboard that ranks road segments by risk.
+hazards are pushed to other drivers (voice alerts, also offline) and to a management dashboard that
+ranks road segments by an explainable, equity-aware risk score.
 
 Prototype for the **WFEO Hackathon 2027 — Challenge 3: Smart, Digital and Data-Driven Transport**.
-Pilot corridor: Huánuco – Tingo María (Peru).
+Pilot corridor: Huánuco – Tingo María, Peru (121 km, 13 segments).
+
+```mermaid
+flowchart LR
+  P[Driver PWA<br/>ONNX Runtime Web<br/>YOLO26n on the phone] -- anonymized photo + GPS<br/>offline queue --> A[FastAPI<br/>re-detection + consensus]
+  A --> M[(MongoDB Atlas<br/>2dsphere, TTL,<br/>time series)]
+  A -- photos --> B[(Blob Storage)]
+  A -- events --> Q[[Storage Queue]] --> F[Azure Function<br/>risk engine]
+  F -- Open-Meteo rain --> M
+  M --> D[Dashboard<br/>map, heat map,<br/>top-10 risk]
+  A -- confirmed hazards --> P2[Other drivers<br/>voice alerts]
+```
 
 ## Status
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Repository, Docker Compose (API + MongoDB), tests | ✅ Done |
-| 1 | Dataset (`pothole`, `obstacle`), training, ONNX export, evaluation | Planned |
-| 2 | API endpoints, MongoDB indexes, consensus | Planned |
-| 3 | Driver PWA: on-device detection, offline queue, voice alerts | Planned |
-| 4 | Management dashboard (Azure Maps) | Planned |
-| 5 | Privacy (face/plate blur) and risk function with equity rule | Planned |
-| 6 | Azure deployment scripts | Planned |
-| 7 | Documentation, measured results, demo script | Planned |
+| 0 | Repository, Docker Compose, tests, CI | ✅ |
+| 1 | Dataset (RDD2022 + TerrainSense → `pothole`, `obstacle`), training, ONNX export, evaluation | ✅ (short training, see results) |
+| 2 | API: reports, consensus (N devices / R m / T min), incidents, segments, stats, media | ✅ 55 tests |
+| 3 | Driver PWA: on-device detection, demo video, offline IndexedDB queue, voice alerts | ✅ 20 tests |
+| 4 | Dashboard: map, heat map, risk-coloured segments, top-10 table, resolve button | ✅ |
+| 5 | Privacy filter on the phone; risk engine with rain + equity rule (Function + local worker) | ✅ 5 tests |
+| 6 | Azure deployment scripts | ⏳ in progress |
+| 7 | Docs: architecture, measured latency, costs, demo script | ⏳ partial (`docs/`) |
+
+## Measured model results (no invented numbers)
+
+`python ml/evaluate.py --by-source` on the **held-out test split** (1,111 images never used in
+training; TerrainSense split by whole source video to avoid leakage), deployed ONNX model @ 640 px,
+YOLO26n trained for only **7 epochs** on an RTX 3050 (4 GB):
+
+| Class | Test images | Boxes | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|---|---|
+| all | 1,111 | 2,160 | 0.339 | 0.258 | 0.226 | 0.091 |
+| pothole | 1,111 | 1,013 | 0.288 | 0.375 | 0.284 | 0.109 |
+| obstacle | 1,111 | 1,147 | 0.391 | 0.140 | 0.168 | 0.073 |
+| pothole (RDD2022 road images only) | 631 | 860 | 0.420 | 0.370 | 0.350 | 0.135 |
+
+Raw output: [`ml/results/eval_hazards_test.json`](ml/results/eval_hazards_test.json). These are
+early-training numbers; `python ml/train.py` (40 epochs) and the team's own Huánuco–Tingo María
+photos are the planned improvement. Consensus across several phones is what keeps false positives
+from reaching drivers.
+
+## Quick start (local demo)
+
+Prerequisites: Docker Desktop and Node.js 20+.
+
+```bash
+# 1. API + MongoDB + Azurite (Blob/Queue emulator) + risk worker
+docker compose up --build            # API on http://localhost:8000/docs
+
+# 2. Driver PWA (phone UI)               -> http://localhost:5173
+cd apps/driver-pwa && npm install && npm run dev
+
+# 3. Dashboard                           -> http://localhost:5174
+cd apps/dashboard && npm install && npm run dev
+
+# 4. Optional: simulate several phones to see consensus
+python scripts/simulate_reports.py --devices 3 --type obstacle --segment HCO-TGM-06
+```
+
+In the PWA press **"Modo demo (video)"**: the bundled video (held-out test images) is analysed on
+the device, hazards become reports, and they appear in the dashboard. Open the PWA in a second
+browser/phone to receive the voice alert. For a one-phone live demo set `CONSENSUS_MIN_DEVICES=1`
+in `.env` (production default: 3). Camera and GPS on a real phone need HTTPS (deployed PWA or a
+tunnel).
+
+**MongoDB Atlas:** put `ATLAS_MONGODB_URI=mongodb+srv://...` in `.env` (git-ignored) and compose
+uses Atlas instead of the local container (database `viasegura`).
 
 ## Repository layout
 
 ```text
-apps/driver-pwa      Driver PWA (React + TypeScript + Vite, ONNX Runtime Web)
-apps/dashboard       Management dashboard (React + TypeScript + Azure Maps)
-services/api         FastAPI service (Python 3.11, Docker)
-services/functions   Azure Functions: segment risk recalculation
-ml/                  Dataset preparation, training, ONNX export, evaluation
-scripts/             Simulation, latency and privacy-audit scripts
-infra/               Bicep templates and Azure CLI deployment
-docs/                Architecture, decisions, results
+apps/driver-pwa      Driver PWA (React + TS + Vite, ONNX Runtime Web, Service Worker, IndexedDB)
+apps/dashboard       Management dashboard (React + TS + MapLibre; Azure Maps tiles via VITE_AZURE_MAPS_KEY)
+services/api         FastAPI (Python 3.11, PyMongo Async, onnxruntime), Docker
+services/functions   Azure Function (queue + timer) and local worker: segment risk engine
+ml/                  prepare_dataset.py, train.py, export_onnx.py, evaluate.py, make_demo_video.py
+scripts/             build_segments.py (OSM + INEI), simulate_reports.py, make_pwa_assets.py
+docs/                decisions.md (deviations from the brief and why)
 ```
 
-## Quick start (local)
+## How it works
 
-Prerequisite: Docker Desktop, or Docker Engine with Compose v2.
+1. **On the phone** (works in airplane mode): YOLO26n (NMS-free, 9.9 MB ONNX) runs in a Web Worker;
+   a hazard is reported only if seen in 2 of 3 analysed frames, with distance/time cool-down.
+2. **Privacy by design**: only a ≤480 px crop leaves the phone; everything outside the hazard box is
+   pixelated and the hazard itself is rendered from ≤160 px, so faces/plates are not legible; canvas
+   re-encoding drops EXIF/GPS; the server re-encodes again. Device ids rotate daily.
+3. **Offline-first**: reports go to an IndexedDB outbox and sync when signal returns; the API is
+   idempotent on `(deviceId, clientReportId)`, so retries never double count.
+4. **Server re-detection** with the same ONNX model; reports whose photo shows no hazard are kept for
+   audit but excluded from consensus.
+5. **Consensus**: an incident is confirmed when N distinct devices report the same type within R
+   metres and T minutes (`CONSENSUS_MIN_DEVICES`, `CONSENSUS_RADIUS_M`, `CONSENSUS_WINDOW_MIN`).
+6. **Risk** per segment = 60 % incidents + 25 % rain (Open-Meteo, 72 h) + 15 % history,
+   × (1 + 0.5 × isolationIndex). Traffic never lowers priority (equity rule); every score stores its
+   breakdown.
+
+## Data sources and licences
+
+- RDD2022 (Arya et al.), CC BY 4.0 — potholes (class D40). Read remotely with HTTP Range requests.
+- TerrainSense (Bhute, Rane, Joshi), CC BY 4.0 — obstacles.
+- OpenStreetMap (ODbL) via OSRM/Nominatim — corridor geometry and districts.
+- INEI Censo 2017 — district population (`populationServed`).
+- Open-Meteo (CC BY 4.0) — precipitation.
+- Ultralytics YOLO is AGPL-3.0; this repository is therefore published as open source.
+
+## Tests
 
 ```bash
-docker compose up --build
+cd services/api && pytest            # 55 tests (integration tests need MongoDB: docker compose up)
+cd apps/driver-pwa && npm test       # 20 tests
+python -m pytest services/functions/tests   # 5 tests (risk formula, equity rule)
 ```
 
-- API: <http://localhost:8000> — interactive docs at <http://localhost:8000/docs>
-- Health: `curl http://localhost:8000/health` returns `"status": "ok"` and `"checks": {"database": "ok"}`
-- MongoDB: `mongodb://localhost:27017` (bound to localhost only)
+## Known limitations
 
-No `.env` file is needed. To change ports or settings, copy `.env.example` to `.env`.
-Stop with `docker compose down` (add `-v` to also delete the local database volume).
-
-## API development without Docker
-
-Windows (PowerShell):
-
-```powershell
-cd services/api
-py -3.11 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest
-.venv\Scripts\python -m uvicorn app.main:app --reload
-```
-
-macOS / Linux:
-
-```bash
-cd services/api
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pytest
-.venv/bin/uvicorn app.main:app --reload
-```
-
-- Integration tests (`-m integration`) use `TEST_MONGODB_URI` (default `mongodb://localhost:27017`,
-  the compose database). They are skipped when it is unreachable; `TEST_REQUIRE_MONGO=1` turns the
-  skip into a failure (CI does this).
-- Lint and format: `ruff check .` and `ruff format --check .`
-
-## Configuration
-
-Everything is configured through environment variables, documented in [`.env.example`](.env.example).
-The repository contains no secrets; in Azure they will live in Key Vault (Phase 6).
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `API_ENV` | `local` | Environment name reported by `/health` |
-| `API_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
-| `API_CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174` | Comma-separated allowed origins |
-| `API_PORT` | `8000` | Host port of the API (compose) |
-| `MONGODB_URI` | `mongodb://localhost:27017` | Used when running outside compose; compose always uses `mongodb://mongo:27017` |
-| `MONGODB_DB` | `viasegura` | Database name |
-| `MONGODB_TIMEOUT_MS` | `3000` | Server-selection and connect timeout |
-| `MONGO_PORT` | `27017` | Host port of the local MongoDB container |
-
-## API conventions
-
-- **Errors** always have the shape `{"error": {"code", "message", "request_id", "details"?}}`;
-  unexpected errors return a generic message and the details go to the logs only.
-- **Request ids:** every response carries `X-Request-ID`. A caller-supplied id is reused when it
-  matches `[A-Za-z0-9._-]{1,64}`; otherwise a new one is generated.
-- **Logs:** one JSON object per line on stdout, including `request_id`, `status` and `duration_ms`.
-- **Health:** `GET /health` is a readiness check (pings MongoDB, returns 503 when degraded);
-  `GET /health/live` is a liveness check with no dependencies.
-
-## Design decisions
-
-Changes with respect to the original brief are recorded in [`docs/decisions.md`](docs/decisions.md),
-for example the PyMongo Async API instead of the deprecated Motor driver, and Azure Functions on
-the Flex Consumption plan.
-
-## Known limitations (current phase)
-
-- Only the health endpoints exist; the domain endpoints arrive in Phase 2.
-- The CI workflow (`.github/workflows/ci.yml`) has not run yet because the repository is not on
-  GitHub.
-- No licence file yet. Ultralytics YOLO (used from Phase 1) is AGPL-3.0, so the source code must be
-  published; AGPL-3.0 for the whole repository is the simplest compliant choice.
+- The model was trained for 7 epochs only (time box); obstacle recall is low. More epochs and local
+  photos are expected to improve it — re-run `ml/train.py` + `ml/evaluate.py`.
+- Consensus serialises incident creation per process; with several API replicas two simultaneous
+  first reports could open two incidents.
+- Plates/faces inside the hazard box are protected by resolution reduction, not by a dedicated
+  detector.
+- Azure deployment scripts (Phase 6) are not finished yet.
