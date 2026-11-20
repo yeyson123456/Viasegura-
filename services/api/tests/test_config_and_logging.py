@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.logging_setup import JsonFormatter, request_id_var
+from app.logging_setup import JsonFormatter, configure_logging, request_id_var
 
 
 def test_cors_origins_are_split_and_trimmed() -> None:
@@ -49,3 +49,11 @@ def test_json_log_line_carries_extras_and_request_id() -> None:
     assert payload["logger"] == "viasegura.test"
     assert payload["request_id"] == "req-1"
     assert payload["duration_ms"] == 12.5
+
+
+def test_uvicorn_access_log_is_silenced_to_avoid_duplicates() -> None:
+    configure_logging("INFO")
+
+    # uvicorn only emits access lines when this logger (or an ancestor) has handlers.
+    assert not logging.getLogger("uvicorn.access").hasHandlers()
+    assert logging.getLogger("uvicorn.error").hasHandlers()
