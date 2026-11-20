@@ -1,0 +1,46 @@
+# --- Secrets / local configuration (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+local.settings.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# --- Node / front-end builds ---
+node_modules/
+dist/
+dev-dist/
+*.local
+*.tsbuildinfo
+
+# --- ML artifacts (heavy; datasets are downloaded by scripts) ---
+ml/data/*
+!ml/data/README.md
+ml/runs/
+*.pt
+
+# --- Azure tooling / local emulators ---
+.azure/
+__azurite_db*
+__blobstorage__/
+__queuestorage__/
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

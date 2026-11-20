@@ -1,0 +1,19 @@
+# Normalize line endings: LF everywhere (containers run Linux),
+# CRLF only for Windows-native scripts.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.onnx binary
+*.pt binary
+*.mp4 binary
+*.webm binary
+*.mp3 binary
+*.wasm binary
