@@ -1,0 +1,22 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/models/*", "/ort/*", "/demo/*", "/icons/*", "/data/*", "/assets/*", "*.{js,css,json,onnx,wasm,mjs,webm,png,svg}"]
+  },
+  "globalHeaders": {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "credentialless",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(self), geolocation=(self), microphone=()"
+  },
+  "mimeTypes": {
+    ".onnx": "application/octet-stream",
+    ".wasm": "application/wasm",
+    ".mjs": "text/javascript",
+    ".webm": "video/webm"
+  },
+  "routes": [
+    { "route": "/sw.js", "headers": { "Cache-Control": "no-cache" } }
+  ]
+}
