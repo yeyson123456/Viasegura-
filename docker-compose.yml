@@ -52,8 +52,8 @@ services:
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:5174}
       # Local-only default; set your own in .env. In Azure it comes from Key Vault.
       ADMIN_API_KEY: ${ADMIN_API_KEY:-local-admin-key}
-      # Inside compose the database is always reached through its service name.
-      MONGODB_URI: mongodb://mongo:27017
+      # Local MongoDB container by default; set ATLAS_MONGODB_URI in .env to use MongoDB Atlas.
+      MONGODB_URI: ${ATLAS_MONGODB_URI:-mongodb://mongo:27017}
       MONGODB_DB: ${MONGODB_DB:-viasegura}
       MONGODB_TIMEOUT_MS: ${MONGODB_TIMEOUT_MS:-3000}
       REPORTS_TTL_DAYS: ${REPORTS_TTL_DAYS:-30}
@@ -74,6 +74,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # Local stand-in for the Azure Function: recomputes segment risk on new events and every 30 min.
+  risk-worker:
+    build:
+      context: .
+      dockerfile: services/functions/Dockerfile
+    image: viasegura-risk-worker:local
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: ${ATLAS_MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-viasegura}
 
 volumes:
   mongo-data:
