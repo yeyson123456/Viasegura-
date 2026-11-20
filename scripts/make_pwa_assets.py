@@ -17,7 +17,7 @@ SEED = ROOT / "services" / "api" / "seed" / "segments.geojson"
 
 
 def icon(size: int) -> Image.Image:
-    """Same design as public/icons/icon.svg: road + warning triangle on a dark tile."""
+    """Same design as public/icons/icon.svg: preventive-sign diamond with a road, navy tile."""
     scale = size / 512
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -25,18 +25,12 @@ def icon(size: int) -> Image.Image:
     def s(points):
         return [(x * scale, y * scale) for x, y in points]
 
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=112 * scale, fill="#0b1220")
-    draw.polygon(s([(196, 448), (236, 96), (276, 96), (316, 448)]), fill="#2c3b5c")
-    for top, bottom, half_top, half_bottom in ((140, 192, 4, 7), (236, 308, 8, 12), (352, 448, 14, 19)):
-        draw.polygon(
-            s([(256 - half_top, top), (256 + half_top, top), (256 + half_bottom, bottom),
-               (256 - half_bottom, bottom)]),
-            fill="#f3f6fb",
-        )
-    draw.polygon(s([(256, 64), (400, 316), (112, 316)]), fill="#ffb020", outline="#0b1220",
-                 width=max(1, round(14 * scale)))
-    draw.rounded_rectangle(s([(244, 148), (268, 244)]), radius=12 * scale, fill="#0b1220")
-    draw.ellipse(s([(241, 265), (271, 295)]), fill="#0b1220")
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=96 * scale, fill="#0b1f36")
+    diamond = s([(256, 58), (454, 256), (256, 454), (58, 256)])
+    draw.polygon(diamond, fill="#f2b705", outline="#111111", width=max(2, round(18 * scale)))
+    draw.polygon(s([(226, 372), (246, 160), (266, 160), (286, 372)]), fill="#111111")
+    for top, bottom in ((182, 216), (240, 280), (304, 348)):
+        draw.rectangle(s([(251, top), (261, bottom)]), fill="#f2b705")
     return image
 
 

@@ -11,7 +11,7 @@ import { haversineM } from "./lib/geo";
 import { startLocation, type LocationFix } from "./lib/location";
 import { enqueue, pendingCount, syncOutbox } from "./lib/outbox";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";
-import { AlertOverlay, HazardList, SettingsSheet, StatusPills } from "./ui/components";
+import { AlertOverlay, HazardList, Icons, SettingsSheet, StatusBar } from "./ui/components";
 
 type Mode = "idle" | "camera" | "demo";
 type ModelState = { status: "loading" | "ready" | "error"; info?: LoadInfo; error?: string };
@@ -34,7 +34,7 @@ function drawDetections(canvas: HTMLCanvasElement, width: number, height: number
   ctx.font = `600 ${Math.max(14, Math.round(width / 40))}px system-ui, sans-serif`;
   for (const d of detections) {
     const [x1, y1, x2, y2] = [d.box[0] * width, d.box[1] * height, d.box[2] * width, d.box[3] * height];
-    const color = d.label === "obstacle" ? "#ff4d4f" : "#ffb020";
+    const color = d.label === "obstacle" ? "#e5484d" : "#f2b705";
     ctx.strokeStyle = color;
     ctx.lineWidth = line;
     ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
@@ -348,55 +348,94 @@ export default function App() {
     }
   };
 
+  const ready = model.status === "ready";
+
   return (
     <div className="app">
-      <header>
-        <div className="brand">
-          <img src="/icons/icon.svg" alt="" width={28} height={28} />
-          <h1>VíaSegura IA</h1>
+      <header className="appbar">
+        <div className="appbar-inner">
+          <div className="brand">
+            <img src="/icons/icon.svg" alt="" width={40} height={40} />
+            <div>
+              <h1>VíaSegura IA</h1>
+              <p>Asistente de seguridad vial</p>
+            </div>
+          </div>
+          <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Configuración">
+            {Icons.settings}
+          </button>
         </div>
-        <button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Ajustes">
-          ⚙
-        </button>
+        <div className="lane-marking" aria-hidden="true" />
       </header>
-      <StatusPills online={online} fix={fix} locationError={locationError} queue={queue} />
 
-      <main>
-        <div className={`stage ${mode === "idle" ? "idle" : ""}`}>
+      <main className="content">
+        <StatusBar online={online} fix={fix} locationError={locationError} queue={queue} />
+
+        <section className={`stage ${mode === "idle" ? "idle" : "running"}`}>
           <video ref={videoRef} playsInline muted aria-label="Vista de la cámara" />
           <canvas ref={canvasRef} aria-hidden="true" />
           {mode === "idle" && (
-            <div className="start-card">
-              {model.status === "loading" && <p>Cargando el modelo de IA en el celular…</p>}
-              {model.status === "error" && <p className="error">No se pudo cargar el modelo: {model.error}</p>}
-              <button className="primary" disabled={model.status !== "ready"} onClick={startCamera}>
-                Iniciar con cámara
-              </button>
-              <button className="secondary" disabled={model.status !== "ready"} onClick={() => startDemo()}>
-                Modo demo (video)
-              </button>
-              <label className="file-button">
-                Usar mi propio video…
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void startDemo(URL.createObjectURL(file));
-                  }}
-                  disabled={model.status !== "ready"}
-                />
-              </label>
-              <p className="muted small">
-                Monte el celular en el parabrisas. La detección funciona sin internet; los reportes se envían al
-                recuperar la señal.
-              </p>
+            <div className="start">
+              <div className="start-visual" aria-hidden="true">
+                <svg viewBox="0 0 400 170" preserveAspectRatio="xMidYMax slice">
+                  <defs>
+                    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#12304f" />
+                      <stop offset="1" stopColor="#2a5481" />
+                    </linearGradient>
+                  </defs>
+                  <rect width="400" height="170" fill="url(#sky)" />
+                  <path d="M0 120 70 74l60 30 70-50 80 46 50-26 70 40v56H0z" fill="#0b1f36" opacity="0.55" />
+                  <path d="M150 170 192 72h16l42 98z" fill="#2b3138" />
+                  <path d="M199 80h2l1 12h-4zm-1 24h4l1 18h-6zm-2 32h8l2 28h-12z" fill="#f2b705" />
+                  <g transform="translate(286 34)">
+                    <rect x="8" y="8" width="44" height="44" rx="4" transform="rotate(45 30 30)" fill="#f2b705" stroke="#111" strokeWidth="3" />
+                    <ellipse cx="30" cy="36" rx="9" ry="4.5" fill="#111" />
+                  </g>
+                </svg>
+              </div>
+              <div className="start-body">
+                <span className="eyebrow">Detección en el dispositivo</span>
+                <h2>Detecte baches y derrumbes mientras conduce</h2>
+                <p>
+                  La IA analiza la vía en el propio celular, sin enviar video. Cada peligro se reporta con su ubicación y una
+                  foto anonimizada; si no hay señal, se guarda y se envía después.
+                </p>
+                {model.status === "loading" && <p className="model-state">Cargando el modelo de IA en el dispositivo…</p>}
+                {model.status === "error" && <p className="model-state error">No se pudo cargar el modelo: {model.error}</p>}
+                <div className="actions">
+                  <button className="btn btn-primary" disabled={!ready} onClick={startCamera}>
+                    {Icons.camera}
+                    Iniciar con la cámara
+                  </button>
+                  <button className="btn btn-outline" disabled={!ready} onClick={() => startDemo()}>
+                    {Icons.play}
+                    Modo demostración
+                  </button>
+                  <label className={`btn btn-ghost ${ready ? "" : "disabled"}`}>
+                    {Icons.film}
+                    Analizar un video propio
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void startDemo(URL.createObjectURL(file));
+                      }}
+                      disabled={!ready}
+                    />
+                  </label>
+                </div>
+                <p className="hint">Monte el celular en el parabrisas, con la cámara hacia la vía.</p>
+              </div>
             </div>
           )}
           {mode !== "idle" && (
             <>
               <div className="hud">
-                {mode === "demo" ? "DEMO · " : ""}
+                <span className={`hud-dot ${mode}`} />
+                {mode === "demo" ? "Demostración" : "Cámara en vivo"}
+                <span className="hud-sep" />
                 {perf ? `IA ${perf.inferenceMs.toFixed(0)} ms · ${perf.fps.toFixed(1)} cuadros/s` : "Analizando…"}
               </div>
               <button className="stop" onClick={stop}>
@@ -404,10 +443,19 @@ export default function App() {
               </button>
             </>
           )}
-        </div>
+        </section>
 
-        {lastResult && <p className="result">{lastResult}</p>}
+        {lastResult && (
+          <p className="result" role="status">
+            {lastResult}
+          </p>
+        )}
         <HazardList hazards={hazards} fix={fix} />
+        <p className="footnote">
+          {Icons.shield}
+          Privacidad: las fotos se recortan y anonimizan en el celular antes de enviarse. El identificador del dispositivo
+          cambia cada día.
+        </p>
       </main>
 
       {toast && (

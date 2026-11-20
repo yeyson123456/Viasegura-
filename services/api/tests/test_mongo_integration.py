@@ -71,3 +71,4 @@ async def test_stats_shape(api) -> None:
     assert body["segments"] == 13
     assert body["consensus"] == {"minDevices": 3, "radiusM": 30.0, "windowMin": 60.0}
     assert set(body["incidentsByStatus"]) == {"pending", "confirmed", "resolved"}
+    assert body["reportsLast24h"] == 0

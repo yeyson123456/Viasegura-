@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any
 
+from pydantic import Field
+
 from app.schemas.common import ApiModel, GeoLineString
 
 
@@ -22,7 +24,8 @@ class SegmentOut(ApiModel):
 
 
 class StatsOut(ApiModel):
-    reports_last_24h: int
+    # Explicit alias: the camelCase generator would produce "reportsLast24H".
+    reports_last_24h: int = Field(alias="reportsLast24h")
     incidents_by_status: dict[str, int]
     confirmed_by_type: dict[str, int]
     segments: int
