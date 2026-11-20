@@ -3,7 +3,11 @@
 *
 !services/api/requirements.txt
 !services/api/app/
+!services/api/seed/
 !ml/models/
+!services/functions/
 
 **/__pycache__
 **/*.py[cod]
+**/.venv
+**/local.settings.json

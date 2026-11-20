@@ -1,7 +1,11 @@
-# Local stack: MongoDB + API.
+# Local stack: MongoDB + Azurite (Azure Storage emulator) + API.
 #   docker compose up --build      → API on http://localhost:8000 (docs at /docs)
 # Works without a .env file; every variable below has a default (see .env.example).
 name: viasegura
+
+x-azurite-connection: &azurite-connection
+  # Azurite's well-known *development* account key, published by Microsoft. Not a secret.
+  "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;"
 
 services:
   mongo:
@@ -19,6 +23,18 @@ services:
       retries: 20
       start_period: 10s
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.38.0
+    restart: unless-stopped
+    command: >-
+      azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --location /data
+      --skipApiVersionCheck --loose
+    ports:
+      - "127.0.0.1:10000:10000" # blob
+      - "127.0.0.1:10001:10001" # queue
+    volumes:
+      - azurite-data:/data
+
   api:
     build:
       context: .
@@ -28,14 +44,24 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      azurite:
+        condition: service_started
     environment:
       API_ENV: ${API_ENV:-local}
       API_LOG_LEVEL: ${API_LOG_LEVEL:-INFO}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:5174}
+      # Local-only default; set your own in .env. In Azure it comes from Key Vault.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-local-admin-key}
       # Inside compose the database is always reached through its service name.
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB: ${MONGODB_DB:-viasegura}
       MONGODB_TIMEOUT_MS: ${MONGODB_TIMEOUT_MS:-3000}
+      REPORTS_TTL_DAYS: ${REPORTS_TTL_DAYS:-30}
+      CONSENSUS_MIN_DEVICES: ${CONSENSUS_MIN_DEVICES:-3}
+      CONSENSUS_RADIUS_M: ${CONSENSUS_RADIUS_M:-30}
+      CONSENSUS_WINDOW_MIN: ${CONSENSUS_WINDOW_MIN:-60}
+      MODEL_PATH: /app/models/hazards.onnx
+      AZURE_STORAGE_CONNECTION_STRING: *azurite-connection
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
@@ -47,7 +73,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
 volumes:
   mongo-data:
+  azurite-data:
