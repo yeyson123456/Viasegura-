@@ -22,9 +22,9 @@
   "boxes_in": "letterboxed input pixels",
   "letterbox_value": 114,
   "opset": 17,
-  "source_weights": "runs/yolo26n-640/weights/best.pt",
-  "sha256": "8e7aaace7d11769c4b1fc771405300f99ab5e2daab5bdd768f4ab269944cf5ed",
+  "source_weights": "runs/interim/best-resumed.pt",
+  "sha256": "2d33e8a60a61e133dfd59700db95dcf6ee2176edf3cd3330624c17f5f121dcde",
   "size_mb": 9.87,
-  "exported_at": "2026-11-20T22:06:47+00:00",
+  "exported_at": "2026-11-20T23:31:37+00:00",
   "ultralytics_version": "8.4.216"
 }
