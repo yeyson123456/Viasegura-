@@ -7,6 +7,7 @@ import type { LocationFix } from "../lib/location";
 import type { Settings } from "../lib/settings";
 
 export function formatDistance(meters: number): string {
+  if (meters < 50) return "< 50 m";
   return meters < 1000 ? `${Math.round(meters / 10) * 10} m` : `${(meters / 1000).toFixed(1)} km`;
 }
 

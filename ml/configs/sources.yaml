@@ -49,3 +49,11 @@ local:
     path: data/local/huanuco_tingo_maria
     license: Team-owned
     split: { val: 0.15, test: 0.25, block_size: 10 }
+  # Close-up pothole photos (built by add_closeup_potholes.py): Hugging Face exports of Roboflow
+  # datasets Ryukijano/Pothole-detection-Yolov8 (OpenRAIL) and keremberke/pothole-segmentation
+  # (CC BY 4.0). Sorted names keep augmented copies of one photo in the same block.
+  - name: pothole_closeup
+    enabled: true
+    path: data/local/pothole_closeup
+    license: OpenRAIL / CC BY 4.0
+    split: { val: 0.10, test: 0.20, block_size: 6 }

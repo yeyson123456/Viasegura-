@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   routeStartKm: 35,
   routeSpeedKmh: 40,
   alertDistanceM: 500,
-  minScore: 0.35,
+  minScore: 0.3,
   sendPhotos: true,
 };
 

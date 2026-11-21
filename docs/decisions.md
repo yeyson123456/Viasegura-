@@ -46,6 +46,34 @@ Each entry records the context, the decision and its consequences.
 - While online, the PWA caches confirmed hazards around the route so voice alerts still fire in
   coverage gaps.
 
+## D-008 · Azure AI Vision evaluated, not used for detection (2026-11-20)
+
+- **Context:** the team asked to add Azure AI Vision (Image Analysis 4.0) to improve detection.
+- **Test:** RDD2022 test images with 2+ labelled potholes were sent to the team's resource.
+  Tags returned were generic (`road`, `asphalt`, `tarmac`, `car`…), never `pothole`, `hole` or
+  `crack`; `caption`, `denseCaptions` and multimodal embeddings answered "not supported/enabled in
+  this region".
+- **Decision:** keep detection on the phone (YOLO26n, works offline) and improve it with data
+  instead (D-010). Azure is used where it adds value: Container Apps, Blob/Queue, Functions,
+  Static Web Apps, Maps tiles.
+
+## D-009 · COCO context model on the phone (2026-11-20)
+
+- A second YOLO26n (COCO-pretrained) recognises people and vehicles: "obstacle" detections that
+  overlap them are discarded, and people/vehicles are pixelated in uploaded photos.
+
+## D-010 · Close-up pothole photos added to training (2026-11-20)
+
+- RDD2022 potholes are far away (dash-cam). 390 close-up pothole photos (Hugging Face exports of
+  Roboflow datasets, OpenRAIL / CC BY 4.0) were added as a local source so the model also
+  recognises potholes seen from near, e.g. a printed or on-screen photo shown to the camera.
+
+## D-011 · Server re-detection is advisory by default (2026-11-20)
+
+- Anonymized photos are low resolution, so the server model often cannot re-confirm the hazard.
+  Such reports are marked `unconfirmed` but still count; consensus across devices remains the main
+  defence. `SERVER_CHECK_REJECTS=true` restores strict filtering.
+
 ## D-007 · Workflow (2026-11-20)
 
 - One git branch per phase (`phase-N-*`), merged into `main` after the phase is reviewed.
